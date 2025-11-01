@@ -1,0 +1,56 @@
+import asyncdispatch, httpclient, json, strutils, htmlparser, xmltree
+
+var cookie: string = ""
+const api = "https://www.1secmail.io"
+var token: string = ""
+var headers = newHttpHeaders({
+    "Connection": "keep-alive",
+    "Host": "1secmail.io",
+    "Content-Type": "application/json",
+    "accept": "application/json, text/plain, */*"
+  })
+
+proc init_cookie*(): Future[void] {.async.} =
+  let client = newAsyncHttpClient()
+  try:
+    client.headers = headers
+    let response = await client.get(api & "/")
+    let html = await response.body
+    let doc = parseHtml(html)
+    
+    for meta in doc.findAll("meta"):
+      let name = meta.attr("name")
+      if name == "csrf-token":
+        token = meta.attr("content")
+        break
+    
+    if response.headers.hasKey("set-cookie"):
+      headers["cookie"] = response.headers["set-cookie"]
+  finally:
+    client.close()
+
+proc get_messages*(): Future[JsonNode] {.async.} =
+  let client = newAsyncHttpClient()
+  try:
+    client.headers = headers
+    let json= %*{"_token": token}
+    let response = await client.post(api & "/get_messages",body = $json)
+    if response.headers.hasKey("set-cookie"):
+      headers["cookie"] = response.headers["set-cookie"]
+    let body = await response.body
+    result = parseJson(body)
+  finally:
+    client.close()
+
+proc delete_email*(): Future[JsonNode] {.async.} =
+  let client = newAsyncHttpClient()
+  try:
+    client.headers = headers
+    let json= %*{"_token": token}
+    let response = await client.post(api & "/delete",body = $json)
+    if response.headers.hasKey("set-cookie"):
+      headers["cookie"] = response.headers["set-cookie"]
+    let body = await response.body
+    result = parseJson(body)
+  finally:
+    client.close()
